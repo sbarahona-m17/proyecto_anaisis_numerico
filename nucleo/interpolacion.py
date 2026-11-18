@@ -1,8 +1,9 @@
 """Construcción algebraica de interpolantes sin solvers de biblioteca."""
+from fractions import Fraction
+
 import sympy as sp
 
 from nucleo.resultado import Resultado
-from utilidades.parser import compilar
 from utilidades.validaciones import nodos, real
 
 X = sp.Symbol("x", real=True)
@@ -40,7 +41,22 @@ def _construir(datos: list, evaluaciones: list, metodo: str) -> Resultado:
                                              for k, d in enumerate(fila)}}
                  for xi, fila in zip(abscisas, triangulo)]
     expandido = sp.expand(polinomio)
-    aproximar = compilar(polinomio, (X,))
+    # Evalúa con los coeficientes racionales antes de redondear el resultado.
+    # Así se evitan desbordamientos y cancelaciones en extrapolaciones o nodos cercanos.
+    if metodo == "Lagrange":
+        pesos = [Fraction(c) for c in sp.Poly(expandido, X).all_coeffs()]
+        centros = [Fraction(0)] * (len(pesos) - 1)
+    else:
+        pesos = [Fraction(c) for c in reversed(coeficientes)]
+        centros = [Fraction(x) for x in reversed(abscisas[:-1])]
+
+    def aproximar(x: float) -> float:
+        consulta = Fraction(str(real(x, "Abscisa de evaluación")))
+        valor = pesos[0]
+        for peso, centro in zip(pesos[1:], centros):
+            valor = peso + (consulta - centro) * valor
+        return real(valor, "Valor interpolado")
+
     xs = [x for x, _ in puntos]
     resumen = [{"x*": x, "Resultado": aproximar(x),
                 "Extrapolación": "Sí" if not min(xs) <= x <= max(xs) else "No"}
@@ -52,7 +68,7 @@ def _construir(datos: list, evaluaciones: list, metodo: str) -> Resultado:
                      {"resumen": resumen, "puntos": puntos, "componentes": componentes,
                       "expandido": expandido, "Forma del polinomio": str(polinomio),
                       "Polinomio expandido": str(expandido),
-                      "Coeficientes": ", ".join(map(str, coeficientes)),
+                      "Coeficientes": ", ".join(map(str, coeficientes)), "Nodos": len(puntos),
                       "función": aproximar})
 
 

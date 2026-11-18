@@ -1,5 +1,6 @@
 """Referencia simbólica opcional con tiempo de cálculo acotado."""
 from functools import lru_cache
+from math import isfinite
 from multiprocessing import get_context
 from multiprocessing.connection import Connection
 
@@ -11,7 +12,8 @@ def _integrar(envio: Connection, expr: sp.Expr, x: sp.Symbol, a: float, b: float
     try:
         exacta = sp.integrate(expr, (x, sp.Rational(str(a)), sp.Rational(str(b))))
         if not exacta.has(sp.Integral) and exacta.is_real is True and exacta.is_finite is True:
-            envio.send((float(exacta), str(exacta)))
+            valor = float(exacta)
+            envio.send((valor, str(exacta)) if isfinite(valor) else (None, None))
         else:
             envio.send((None, None))
     except Exception:

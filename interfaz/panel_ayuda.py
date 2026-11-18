@@ -32,11 +32,16 @@ TEORIA = {
         "Estima la pendiente con dos aproximaciones y desplaza ambas semillas.",
         "Usa puntos distintos y ordenadas distintas durante el paso.",
         "Evita derivar y suele converger rápido cerca de una raíz simple. Puede salir del dominio o estancarse."),
-    "Cinco puntos": (
-        "Primera: [1,−8,0,8,−1]/(12h). Segunda: [−1,16,−30,16,−1]/(12h²).",
-        "Multiplica los pesos por f(x₀+kh) para k=−2,−1,0,1,2 y suma.",
+    "Primera derivada": (
+        "f′(x₀) ≈ [f(x₀−2h)−8f(x₀−h)+8f(x₀+h)−f(x₀+2h)]/(12h).",
+        "Suma los valores ponderados de los nodos vecinos y divide por 12h.",
         "Necesita cinco nodos uniformes y h>0. El orden cuatro requiere derivadas suficientemente suaves.",
-        "Alta precisión con mallas moderadas. Los pasos pequeños amplifican el redondeo, especialmente en la segunda derivada."),
+        "La primera derivada estima la pendiente de la tangente. Un paso muy pequeño amplifica el redondeo."),
+    "Segunda derivada": (
+        "f″(x₀) ≈ [−f(x₀−2h)+16f(x₀−h)−30f(x₀)+16f(x₀+h)−f(x₀+2h)]/(12h²).",
+        "Suma los valores ponderados de los cinco nodos y divide por 12h².",
+        "Necesita cinco nodos uniformes y h>0. El orden cuatro requiere derivadas suficientemente suaves.",
+        "La segunda derivada mide el cambio de pendiente. La división por h² amplifica el redondeo."),
     "Lagrange": (
         "P(x)=Σ yᵢLᵢ(x), con Lᵢ(x)=Πⱼ≠ᵢ [(x−xⱼ)/(xᵢ−xⱼ)].",
         "Construye una base por nodo, multiplícala por yᵢ y suma.",

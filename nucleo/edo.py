@@ -1,8 +1,9 @@
 """Métodos explícitos de un paso para una EDO escalar."""
-from math import ceil, isclose
+from math import ceil, fsum, isclose
 
 from nucleo.resultado import Resultado
 from utilidades.errores import errores
+from utilidades.parser import Expresion
 from utilidades.validaciones import Funcion, entero, evaluar, positivo, real
 
 METODOS = ("Euler", "Heun", "Runge-Kutta 4")
@@ -33,14 +34,31 @@ def resolver(metodo: str, f: Funcion, t0: float, y0: float, tf: float,
         raise ValueError("El paso es demasiado pequeño para avanzar en el tiempo.")
     k1_inicial = evaluar(f, t0, y0)
 
+    if exacta is not None:
+        y_referencia = evaluar(exacta, t0)
+        if not isclose(y_referencia, y0, rel_tol=1e-7, abs_tol=1e-9):
+            raise ValueError("La referencia exacta no satisface la condición inicial.")
+    if isinstance(exacta, Expresion):
+        derivada = exacta.derivada()
+        for t in (t0, t0 + amplitud / 2, tf):
+            pendiente = evaluar(derivada, t)
+            esperada = evaluar(f, t, evaluar(exacta, t))
+            if not isclose(pendiente, esperada, rel_tol=1e-7, abs_tol=1e-9):
+                raise ValueError(f"La referencia exacta no satisface la EDO en t={t:g}.")
+
     def datos_paso(i: int, t: float, y: float) -> dict:
         referencia = evaluar(exacta, t) if exacta else None
         return {"i": i, "t": t, "y": y, "Referencia": referencia, **errores(y, referencia)}
 
     filas = [datos_paso(0, t0, y0)]
-    if exacta and not isclose(filas[0]["Referencia"], y0, rel_tol=1e-7, abs_tol=1e-9):
-        raise ValueError("La referencia exacta no satisface la condición inicial.")
     extra = {"función": f, "exacta": exacta, "h": paso, "Intervalo": (t0, tf)}
+
+    def terminar(convergio: bool, mensaje: str) -> Resultado:
+        ultimo = filas[-1]
+        extra.update({"Pasos": len(filas) - 1, "Tiempo alcanzado": ultimo["t"],
+                      "Referencia": ultimo["Referencia"], **errores(ultimo["y"], ultimo["Referencia"])})
+        return Resultado(ultimo["y"], convergio, mensaje, filas, extra)
+
     t, y = t0, y0
     for i in range(1, cantidad + 1):
         siguiente = tf if i == cantidad else t0 + i * paso
@@ -57,17 +75,18 @@ def resolver(metodo: str, f: Funcion, t0: float, y0: float, tf: float,
                 predictor = y + dt * k1
                 k2 = evaluar(f, siguiente, predictor)
                 etapas.update({"Predictor": predictor, "k2": k2})
-                incremento = dt * (k1 + k2) / 2
+                incremento = dt * (k1 / 2 + k2 / 2)
             else:
-                k2 = evaluar(f, t + dt / 2, y + dt * k1 / 2)
-                k3 = evaluar(f, t + dt / 2, y + dt * k2 / 2)
+                medio = dt / 2
+                k2 = evaluar(f, t + medio, y + medio * k1)
+                k3 = evaluar(f, t + medio, y + medio * k2)
                 k4 = evaluar(f, siguiente, y + dt * k3)
                 etapas.update({"k2": k2, "k3": k3, "k4": k4})
-                incremento = dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+                incremento = dt * fsum((k1 / 6, k2 / 3, k3 / 3, k4 / 6))
             nuevo = real(y + incremento, "Solución")
             fila = datos_paso(i, siguiente, nuevo)
-        except ValueError as error:
-            return Resultado(y, False, f"Paso {i} detenido. {error}", filas, extra)
+        except (ArithmeticError, ValueError) as error:
+            return terminar(False, f"Paso {i} detenido en t={siguiente:g}. {error}")
         if metodo == "Heun":
             etapas["Corrector"] = nuevo
         filas.append({**fila, **etapas})
@@ -75,6 +94,4 @@ def resolver(metodo: str, f: Funcion, t0: float, y0: float, tf: float,
     mensaje = "Se alcanzó el tiempo final."
     if ajustado:
         mensaje += f" Último paso acortado a {filas[-1]['Paso']:.12g}."
-    extra.update({"Pasos": cantidad, "Referencia": filas[-1]["Referencia"],
-                  **errores(y, filas[-1]["Referencia"])})
-    return Resultado(y, True, mensaje, filas, extra)
+    return terminar(True, mensaje)

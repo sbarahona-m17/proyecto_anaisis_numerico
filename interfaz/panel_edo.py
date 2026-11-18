@@ -7,7 +7,7 @@ CAMPOS = (
     ("paso", "Configuración de la malla", ("Tamaño de paso h", "Número de pasos N")),
     ("h", "Tamaño de paso h", ".5"),
     ("n", "Número de pasos N", "10"),
-    ("exacta", "Referencia exacta y(t), opcional", "1000/(1+19*exp(-0.8*t))"),
+    ("exacta", "Referencia exacta y(t), opcional", ""),
 )
 
 

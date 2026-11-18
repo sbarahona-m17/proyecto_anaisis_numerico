@@ -27,6 +27,8 @@ def test_N3(i, mb, gb):
     r = integrar(METODOS[i], datos=N3, transferencia=True)
     assert r.valor == mb
     assert r.extra["Volumen (GB)"] == gb
+    assert r.extra["Paso efectivo"] == 600
+    assert [f["Tiempo (s)"] for f in r.tabla] == list(range(0, 3601, 600))
 
 
 @pytest.mark.parametrize("a,b,n", [(0, 1, 3), (0, 1, 0), (2, 1, 4), (1, 1, 4)])
@@ -40,3 +42,19 @@ def test_dominio_y_nodos():
         integrar(METODOS[0], interpretar("log(x)"), -1, 1)
     with pytest.raises(ValueError, match="equiespaciados"):
         integrar(METODOS[1], datos=[(0, 1), (1, 2), (3, 3)])
+
+
+def test_tablas_simples_seleccionan_los_nodos_requeridos():
+    datos = [(x, x**2) for x in range(5)]
+    trapecio, simpson = [integrar(METODOS[i], datos=datos[::-1]) for i in (0, 2)]
+    assert trapecio.valor == 32
+    assert [f["x"] for f in trapecio.tabla] == [0, 4]
+    assert simpson.valor == pytest.approx(64 / 3)
+    assert [f["Peso"] for f in simpson.tabla] == [1, 4, 1]
+    with pytest.raises(ValueError, match="punto medio"):
+        integrar(METODOS[2], datos=datos[:-1])
+
+
+def test_integral_finita_con_suma_ponderada_grande():
+    r = integrar(METODOS[0], lambda x: 1e308, 0, .25)
+    assert r.valor == 2.5e307

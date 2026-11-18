@@ -14,7 +14,9 @@ def dibujos(calculo: Calculo, paso: int | None = None) -> dict[str, Dibujo]:
     colores = ["#087fbb", "#008b79", "#b45287", "#c87b00"]
 
     def area(ax: Axes, seleccion: dict) -> None:
-        rotular(ax, "Área y aproximaciones de Newton–Cotes", "x", "f(x)")
+        transferencia = primero.extra.get("Unidad") == "Mb"
+        rotular(ax, "Área y aproximaciones de Newton–Cotes",
+                "Tiempo (min)" if transferencia else "x", "Tasa (Mbps)" if transferencia else "f(x)")
         a, b = primero.extra["puntos"][0][0], primero.extra["puntos"][-1][0]
         f = primero.extra["función"]
         if f:
@@ -26,6 +28,7 @@ def dibujos(calculo: Calculo, paso: int | None = None) -> dict[str, Dibujo]:
             cuantos = len(puntos) - 1 if paso is None else min(paso, len(puntos) - 1)
             bloques = range(0, cuantos - grado + 1, grado)
             xs_trazo, ys_trazo = [], []
+            bordes_x, bordes_y = [], []
             salto = max(1, len(bloques) // 250)
             for i in bloques[::salto]:
                 xs, ys = zip(*puntos[i:i + grado + 1])
@@ -40,8 +43,12 @@ def dibujos(calculo: Calculo, paso: int | None = None) -> dict[str, Dibujo]:
                     ordenadas = (1-u) * ys[0] + u * ys[1]
                 xs_trazo.extend([*abscisas, np.nan])
                 ys_trazo.extend([*ordenadas, np.nan])
+                bordes_x.extend((xs[0], xs[-1]))
+                bordes_y.extend((ys[0], ys[-1]))
             ax.plot(xs_trazo, ys_trazo, color=color, label=nombre)
             ax.fill_between(xs_trazo, ys_trazo, color=color, alpha=.14)
+            if bordes_x:
+                ax.vlines(bordes_x, 0, bordes_y, color=color, linewidth=.6, alpha=.45)
             xs, ys = zip(*puntos[:cuantos + 1:salto])
             ax.scatter(xs, ys, s=12, color=color)
 

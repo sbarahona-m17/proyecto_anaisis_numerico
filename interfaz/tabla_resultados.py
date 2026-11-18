@@ -1,6 +1,6 @@
 """Tablas desplazables con edición para los datos de entrada."""
 import tkinter as tk
-from tkinter import ttk
+from tkinter import font, ttk
 
 from interfaz.estilos import PALETAS
 from utilidades.exportacion import columnas
@@ -13,6 +13,7 @@ class Tabla(ttk.Frame):
     def __init__(self, master: tk.Misc, altura: int = 6):
         super().__init__(master)
         self.arbol = ttk.Treeview(self, show="headings", height=altura)
+        self.fuente = font.Font(root=self, font=ttk.Style(self).lookup("Treeview", "font"))
         vertical = ttk.Scrollbar(self, orient="vertical", command=self.arbol.yview)
         horizontal = ttk.Scrollbar(self, orient="horizontal", command=self.arbol.xview)
         self.arbol.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
@@ -30,14 +31,17 @@ class Tabla(ttk.Frame):
         claves = claves or columnas(filas)
         self.arbol.delete(*self.arbol.get_children())
         self.arbol.configure(columns=[str(i) for i in range(len(claves))])
+        textos = [[mostrar(fila[c], decimales) if c in fila else "" for c in claves] for fila in filas]
         for i, clave in enumerate(claves):
-            self.arbol.heading(str(i), text=clave)
-            mayor = max((len(str(fila.get(clave, ""))) for fila in filas), default=0)
-            ancho = max(100, min(250, max(len(clave), mayor) * 8 + 18))
-            self.arbol.column(str(i), anchor="center", minwidth=74, width=ancho)
+            valores = [fila[clave] for fila in filas[:100] if fila.get(clave) is not None]
+            numerica = bool(valores) and all(isinstance(v, (int, float)) for v in valores)
+            alineacion = "e" if numerica else "w"
+            self.arbol.heading(str(i), text=clave, anchor=alineacion)
+            muestra = [clave, *(fila[i] for fila in textos[:100])]
+            ancho = max(47, min(270, max(self.fuente.measure(t) for t in muestra) + 22))
+            self.arbol.column(str(i), anchor=alineacion, minwidth=42, width=ancho)
         self.arbol.tag_configure("alterna", background=PALETAS[oscuro]["alterna"])
-        for i, fila in enumerate(filas):
-            valores = [mostrar(fila[c], decimales) if c in fila else "" for c in claves]
+        for i, valores in enumerate(textos):
             self.arbol.insert("", "end", iid=str(i), values=valores,
                               tags=("alterna",) if i % 2 else ())
 

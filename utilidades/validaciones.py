@@ -55,8 +55,12 @@ def suma_real(valores: Iterable[float], nombre: str) -> float:
 
 def nodos(datos: Iterable, minimo: int = 2, maximo: int = 10001,
           ordenar: bool = False) -> list[tuple[float, float]]:
+    try:
+        filas = iter(datos)
+    except TypeError:
+        raise ValueError("Ingrese una tabla con dos columnas.") from None
     puntos = []
-    for i, fila in enumerate(datos, 1):
+    for i, fila in enumerate(filas, 1):
         if i > maximo:
             raise ValueError(f"Se admiten hasta {maximo} filas de dos columnas.")
         try:

@@ -1,10 +1,22 @@
 """Métodos cerrados y abiertos para ecuaciones escalares."""
-from math import isclose
+from math import isclose, isfinite
 
 from nucleo.resultado import Resultado
 from utilidades.errores import errores
 from utilidades.parser import Expresion
 from utilidades.validaciones import Funcion, entero, evaluar, positivo, real
+
+
+def _cociente_secante(fa: float, fb: float) -> float | None:
+    """Devuelve fb / (fb - fa), incluso si la resta directa desborda."""
+    if fa == fb:
+        return None
+    diferencia = fb - fa
+    if not isfinite(diferencia):
+        escala = max(abs(fa), abs(fb))
+        fa, fb = fa / escala, fb / escala
+        diferencia = fb - fa
+    return fb / diferencia
 
 
 def _resolver(metodo: str, f: Funcion, inicial: float, segundo: float | None,
@@ -23,6 +35,7 @@ def _resolver(metodo: str, f: Funcion, inicial: float, segundo: float | None,
         raise ValueError("Las aproximaciones de secante deben ser distintas.")
     fa = evaluar(f, a)
     fb = fa if segundo is None else evaluar(f, b)
+    escala_residuo = min(abs(fa), abs(fb))
     filas: list[dict] = []
     extra = {"función": f, "iniciales": (a, b), "método": metodo}
     if isinstance(derivada, Expresion):
@@ -31,6 +44,9 @@ def _resolver(metodo: str, f: Funcion, inicial: float, segundo: float | None,
     def terminar(valor: float, residuo: float, exito: bool, razon: str) -> Resultado:
         extra["Residuo"] = abs(residuo)
         extra["Iteraciones"] = len(filas)
+        if filas:
+            extra["Cambio absoluto"] = filas[-1]["Ea"]
+            extra["Cambio relativo (%)"] = filas[-1]["Error relativo (%)"]
         return Resultado(valor, exito, razon, filas, extra)
 
     for punto, valor in ((a, fa), (b, fb)):
@@ -40,32 +56,36 @@ def _resolver(metodo: str, f: Funcion, inicial: float, segundo: float | None,
         raise ValueError(f"El intervalo no presenta cambio de signo: f(a)={fa:g}, f(b)={fb:g}.")
 
     previo = None if cerrado else b
+    f_previo = fb
     reciente = [b]
     c, fc = b, fb
     for n in range(1, limite + 1):
         try:
             if cerrado:
-                fila = {"n": n, "a": a, "b": b, "f(a)": fa, "f(b)": fb}
                 if metodo == "Bisección":
-                    candidato = a / 2 + b / 2
+                    amplitud = b - a
+                    candidato = a + amplitud / 2 if isfinite(amplitud) else a / 2 + b / 2
                 else:
                     # Escalar ambas ordenadas evita desbordar su diferencia.
                     escala = max(abs(fa), abs(fb))
                     peso = abs(fa / escala) / (abs(fa / escala) + abs(fb / escala))
                     candidato = (1 - peso) * a + peso * b
-                fila["c"] = candidato
+                fila = {"n": n, "a": a, "b": b, "c": candidato, "f(a)": fa, "f(b)": fb}
             elif derivada is not None:
                 pendiente = evaluar(derivada, b)
-                if abs(pendiente) <= 1e-15:
-                    return terminar(c, fc, False, "Derivada nula o demasiado pequeña.")
+                if pendiente == 0:
+                    return terminar(c, fc, False, "Derivada nula.")
                 candidato = b - fb / pendiente
                 fila = {"n": n, "xₙ": b, "f(xₙ)": fb, "f′(xₙ)": pendiente,
                         "x siguiente": candidato}
             else:
-                denominador = fb - fa
-                if denominador == 0:
+                cociente = _cociente_secante(fa, fb)
+                if cociente is None:
                     return terminar(c, fc, False, "Denominador nulo en secante.")
-                candidato = b - (fb / denominador) * (b - a)
+                distancia = b - a
+                avance = (cociente * distancia if isfinite(distancia)
+                          else cociente * b - cociente * a)
+                candidato = b - avance
                 fila = {"n": n, "x anterior": a, "xₙ": b, "f(x anterior)": fa,
                         "f(xₙ)": fb, "x siguiente": candidato}
             candidato = real(candidato, "Aproximación")
@@ -82,12 +102,22 @@ def _resolver(metodo: str, f: Funcion, inicial: float, segundo: float | None,
         if fc == 0:
             return terminar(c, fc, True, "Raíz exacta en la evaluación.")
         medida = {"Absoluto": ea, "Relativo (%)": relativo, "Residuo": abs(fc)}[criterio]
+        residuo_pequeno = abs(fc) <= min(tol, escala_residuo * 1e-14)
         if previo == c or (cerrado and c in (a, b)):
-            if abs(fc) <= tol and medida is not None and medida <= tol:
+            if medida is not None and medida <= tol and (criterio == "Residuo" or residuo_pequeno):
                 return terminar(c, fc, True, f"Criterio cumplido: {criterio}.")
-            return terminar(c, fc, False, "Estancamiento con residuo superior a la tolerancia.")
+            return terminar(c, fc, False, "Estancamiento sin confirmar una raíz.")
         if medida is not None and medida <= tol:
-            return terminar(c, fc, True, f"Criterio cumplido: {criterio}.")
+            if criterio == "Residuo" or residuo_pequeno or metodo == "Bisección":
+                return terminar(c, fc, True, f"Criterio cumplido: {criterio}.")
+            if metodo == "Newton-Raphson" and abs(fc) < abs(f_previo):
+                return terminar(c, fc, True, f"Criterio cumplido: {criterio}.")
+            if metodo in ("Falsa posición", "Secante"):
+                # Un paso diminuto puede provenir de una pendiente calculada lejos
+                # de la raíz. Estima la corrección con las últimas dos aproximaciones.
+                cociente = _cociente_secante(f_previo, fc)
+                if cociente is not None and abs(cociente) * medida <= tol:
+                    return terminar(c, fc, True, f"Criterio cumplido: {criterio}.")
         if cerrado:
             if (fa < 0) != (fc < 0):
                 b, fb = c, fc
@@ -99,7 +129,7 @@ def _resolver(metodo: str, f: Funcion, inicial: float, segundo: float | None,
                 return terminar(c, fc, False, "Se detectó un ciclo de aproximaciones.")
             reciente = (reciente + [c])[-8:]
             a, fa, b, fb = b, fb, c, fc
-        previo = c
+        previo, f_previo = c, fc
     return terminar(c, fc, False, "Se alcanzó el máximo de iteraciones.")
 
 

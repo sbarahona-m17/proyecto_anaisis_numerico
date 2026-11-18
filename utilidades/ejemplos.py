@@ -1,6 +1,6 @@
 """Datos de entrada de la sección 11 de la guía oficial."""
 RAICES = ("Bisección", "Falsa posición", "Newton-Raphson", "Secante")
-DERIVACION = ("Cinco puntos",)
+DERIVACION = ("Primera derivada", "Segunda derivada")
 INTERPOLACION = ("Lagrange", "Newton")
 
 D2 = list(zip([1, 1.5, 2, 2.5, 3], [557.5, 583.8125, 612, 641.6875, 672.5]))

@@ -30,8 +30,21 @@ DESCRIPCIONES = ("Busca ceros y analiza convergencia.",
                  "Calcula áreas con reglas de cuadratura.",
                  "Compara soluciones de valor inicial.")
 ICONOS = ("f(x)", "d/dx", "P(x)", "∫", "y′")
-ACENTOS = ("#51ceb1", "#7fa9f0", "#a69aeb", "#f1b773", "#eb91a3")
 DATOS = {"Diferenciación": D2, "Interpolación": I1, "Integración": N3}
+FILAS_FORMULARIO = {
+    "Raíces": ((("f",), ("a", "b"), ("x0",), ("s0", "s1")),
+               (("criterio",), ("tol", "max_iter")), (("referencia",),)),
+    "Diferenciación": ((("modo",), ("f",), ("x0", "h")), (), ()),
+    "Interpolación": ((("consultas",),), (), ()),
+    "Integración": ((("modo",), ("f",), ("a", "b")), (("n",), ("unidad",)), ()),
+    "EDO": ((("f",), ("t0", "tf"), ("y0",)),
+            (("paso",), ("h", "n")), (("exacta",),)),
+}
+EJEMPLO_VACIO = "Elegir un caso…"
+ETIQUETAS_FORMULARIO = {
+    "a": "Límite a", "b": "Límite b", "s0": "Semilla secante x₀", "s1": "Semilla secante x₁",
+    "tol": "Tolerancia", "max_iter": "Máx. iteraciones", "h": "Paso h",
+}
 
 
 @dataclass
@@ -52,10 +65,10 @@ class Aplicacion(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("NumLab · Laboratorio Interactivo de Métodos Numéricos")
-        ancho = min(1240, self.winfo_screenwidth() - 45)
-        alto = min(850, self.winfo_screenheight() - 105)
+        ancho = min(1390, self.winfo_screenwidth() - 60)
+        alto = min(890, self.winfo_screenheight() - 105)
         self.geometry(f"{ancho}x{alto}")
-        self.minsize(920, 580)
+        self.minsize(990, 580)
         self.estilo = ttk.Style(self)
         self.oscuro = False
         self.colores = estilos.aplicar(self.estilo, self.oscuro)
@@ -66,22 +79,48 @@ class Aplicacion(tk.Tk):
         self.trabajo = 0
         self.reloj = None
         self.indice = None
-        self.barra = ttk.Frame(self, style="Hero.TFrame", padding=(22, 9))
-        self.barra.pack(fill="x")
-        ttk.Label(self.barra, text="NumLab", style="Marca.TLabel").pack(side="left")
-        ttk.Button(self.barra, text="Inicio", style="Barra.TButton", command=self.inicio).pack(side="left", padx=(18, 4))
-        ttk.Button(self.barra, text="Ayuda", style="Barra.TButton", command=lambda: panel_ayuda.abrir(
-            self, self.colores)).pack(side="right", padx=3)
-        self.tema = ttk.Button(self.barra, text="Tema oscuro", style="Barra.TButton", command=self.alternar_tema)
-        self.tema.pack(side="right", padx=3)
-        ttk.Button(self.barra, text="Historial", style="Barra.TButton", command=self.abrir_historial).pack(
-            side="right", padx=3)
+        self._barra_lateral()
+        espacio = ttk.Frame(self)
+        espacio.pack(side="left", fill="both", expand=True)
         self.estado = tk.StringVar()
-        ttk.Label(self, textvariable=self.estado, style="Estado.TLabel",
-                  padding=(14, 6)).pack(side="bottom", fill="x")
-        self.cuerpo = ttk.Frame(self)
+        ttk.Label(espacio, textvariable=self.estado, style="Estado.TLabel",
+                  padding=(20, 7)).pack(side="bottom", fill="x")
+        self.cuerpo = ttk.Frame(espacio)
         self.cuerpo.pack(fill="both", expand=True)
         self.inicio()
+
+    def _barra_lateral(self) -> None:
+        """Mantiene los módulos y las acciones generales accesibles."""
+        barra = ttk.Frame(self, style="Hero.TFrame", width=172, padding=(10, 15, 10, 10))
+        barra.pack(side="left", fill="y")
+        barra.pack_propagate(False)
+        ttk.Label(barra, text="NumLab", style="Marca.TLabel").pack(anchor="w", padx=9, pady=(5, 16))
+        ttk.Separator(barra).pack(fill="x", padx=9, pady=(0, 12))
+        self.navegacion = {}
+        nombre_inicio = ttk.Button(barra, text="Inicio", style="Barra.TButton", command=self.inicio)
+        nombre_inicio.pack(fill="x", pady=(0, 4))
+        self.navegacion[None] = nombre_inicio
+        for modulo in METODOS:
+            nombre = "Ecuaciones (EDO)" if modulo == "EDO" else modulo
+            boton = ttk.Button(barra, text=nombre, style="Barra.TButton",
+                               command=lambda m=modulo: self.abrir_modulo(m))
+            boton.pack(fill="x", pady=1)
+            self.navegacion[modulo] = boton
+        utilidades = ttk.Frame(barra, style="Hero.TFrame")
+        utilidades.pack(side="bottom", fill="x")
+        ttk.Separator(utilidades).pack(fill="x", padx=9, pady=(0, 8))
+        ttk.Button(utilidades, text="Historial", style="Barra.TButton",
+                   command=self.abrir_historial).pack(fill="x")
+        ttk.Button(utilidades, text="Ayuda", style="Barra.TButton", command=lambda: panel_ayuda.abrir(
+            self, self.colores)).pack(fill="x")
+        self.tema = ttk.Button(utilidades, text="Tema oscuro", style="Barra.TButton",
+                               command=self.alternar_tema)
+        self.tema.pack(fill="x")
+
+    def _marcar_modulo(self) -> None:
+        self.colores = estilos.aplicar(self.estilo, self.oscuro, self.modulo)
+        for modulo, boton in self.navegacion.items():
+            boton.state(["selected" if modulo == self.modulo else "!selected"])
 
     def report_callback_exception(self, tipo, valor, traceback) -> None:
         """Conserva la sesión si un evento de la interfaz falla."""
@@ -99,105 +138,102 @@ class Aplicacion(tk.Tk):
         """Muestra el menú de módulos."""
         self._renovar()
         self.modulo = None
-        hero = ttk.Frame(self.cuerpo, style="Hero.TFrame", padding=(25, 10))
-        hero.pack(fill="x", padx=22, pady=(17, 14))
+        self._marcar_modulo()
+        hero = ttk.Frame(self.cuerpo, style="Hero.TFrame", padding=(25, 16))
+        hero.pack(fill="x", padx=23, pady=(22, 18))
         portada = ttk.Frame(hero, style="Hero.TFrame")
-        portada.pack(side="left", fill="y")
-        ttk.Label(portada, text="NumLab", style="Hero.TLabel").pack(anchor="w")
-        ttk.Label(portada, text="Laboratorio Interactivo de Métodos Numéricos",
-                  style="Subhero.TLabel", wraplength=460).pack(anchor="w")
-        ttk.Label(portada, text="Explora aproximaciones y compara cómo cambia el error.",
-                  style="DescripcionHero.TLabel", wraplength=430).pack(anchor="w", pady=(5, 9))
-        ttk.Button(portada, text="Comenzar con raíces  →", style="Accion.TButton",
-                   command=lambda: self.abrir_modulo("Raíces")).pack(anchor="w", pady=(0, 4))
-        Trazo(hero).pack(side="right", fill="both", expand=True, padx=(26, 0))
-        ttk.Label(self.cuerpo, text="Elige un módulo", style="Seccion.TLabel").pack(
-            anchor="w", padx=24, pady=(0, 3))
-        tarjetas = ttk.Frame(self.cuerpo, padding=(16, 0))
-        tarjetas.pack(fill="x")
+        portada.pack(side="left", fill="y", pady=(12, 0))
+        ttk.Label(portada, text="Laboratorio de\nmétodos numéricos",
+                  style="Hero.TLabel").pack(anchor="w")
+        ttk.Label(portada, text="Compara métodos, visualiza sus pasos y exporta tus resultados.",
+                  style="DescripcionHero.TLabel", wraplength=290, justify="left").pack(
+                      anchor="w", pady=(9, 0))
+        Trazo(hero).pack(side="right", fill="both", expand=True, padx=(22, 0))
+        ttk.Label(self.cuerpo, text="Módulos de cálculo", style="Seccion.TLabel").pack(
+            anchor="w", padx=23, pady=(0, 8))
+        tarjetas = ttk.Frame(self.cuerpo)
+        tarjetas.pack(fill="x", padx=17)
         for i, (modulo, descripcion) in enumerate(zip(METODOS, DESCRIPCIONES)):
-            tarjeta = ttk.Frame(tarjetas, style="Panel.TFrame", padding=(9, 5))
-            tarjeta.grid(row=i//2, column=i%2, sticky="ew", padx=6, pady=4)
+            tarjeta = ttk.Frame(tarjetas, style="Tarjeta.TFrame", padding=(11, 7))
+            tarjeta.grid(row=i // 2, column=i % 2, sticky="ew", padx=6, pady=(0, 10))
             accion = lambda m=modulo: self.abrir_modulo(m)
-            icono = tk.Label(tarjeta, text=ICONOS[i], width=4, background=ACENTOS[i],
-                             foreground="#172640", font=("Segoe UI Semibold", 12),
+            fondo_icono, tinta_icono = estilos.acento_modulo(modulo, self.oscuro)
+            icono = tk.Label(tarjeta, text=ICONOS[i], width=4, background=fondo_icono,
+                             foreground=tinta_icono, font=("Cambria Math", 15),
                              cursor="hand2", borderwidth=0)
-            icono.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 5), pady=3)
-            ttk.Button(tarjeta, text=f"{TITULOS[modulo]}  →", style="Tarjeta.TButton",
+            icono.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 11), pady=3)
+            ttk.Button(tarjeta, text=TITULOS[modulo], style="Tarjeta.TButton",
                        command=accion, cursor="hand2").grid(row=0, column=1, sticky="ew")
-            nota = ttk.Label(tarjeta, text=descripcion, background=self.colores["papel"],
-                             foreground=self.colores["secundario"], cursor="hand2")
-            nota.grid(row=1, column=1, sticky="ew", padx=13, pady=(0, 4))
+            nota = ttk.Label(tarjeta, text=descripcion, style="PanelNota.TLabel", cursor="hand2")
+            nota.grid(row=1, column=1, sticky="w", padx=4, pady=(0, 4))
+            flecha = ttk.Button(tarjeta, text="→", width=2, style="Tarjeta.TButton",
+                                command=accion, takefocus=False)
+            flecha.grid(row=0, column=2, rowspan=2, padx=(5, 1))
             tarjeta.columnconfigure(1, weight=1)
             nota.bind("<Button-1>", lambda _, abrir=accion: abrir())
             icono.bind("<Button-1>", lambda _, abrir=accion: abrir())
         for columna in range(2):
             tarjetas.columnconfigure(columna, weight=1, uniform="tarjetas")
-        self.estado.set("Ingeniería de Software  ·  Métodos Numéricos  ·  2026-2")
+        self.estado.set("Elige un módulo para iniciar un cálculo.")
 
     def abrir_modulo(self, modulo: str) -> None:
         """Construye el espacio de trabajo del módulo solicitado."""
         self._renovar()
         self.modulo = modulo
-        top = ttk.Frame(self.cuerpo, padding=(12, 5))
+        self._marcar_modulo()
+        top = ttk.Frame(self.cuerpo, padding=(19, 14, 19, 8))
         top.pack(fill="x")
-        ttk.Button(top, text="Volver", command=self.volver).grid(row=0, column=0, padx=(0, 8))
-        ttk.Label(top, text=TITULOS[modulo], style="Titulo.TLabel").grid(row=0, column=1, sticky="w")
-        top.columnconfigure(1, weight=1)
-        self.metodo = tk.StringVar(value=METODOS[modulo][0])
-        lista = ttk.Combobox(top, textvariable=self.metodo, values=METODOS[modulo],
-                             width=23, state="readonly")
-        lista.grid(row=0, column=2, padx=4)
-        lista.bind("<<ComboboxSelected>>", self._actualizar_campos)
+        ttk.Label(top, text=TITULOS[modulo], style="Titulo.TLabel").pack(side="left")
+        ttk.Button(top, text="Volver", command=self.volver).pack(side="right")
         ttk.Button(top, text="Teoría", command=lambda: panel_ayuda.abrir(
-            self, self.colores, self.metodo.get())).grid(row=0, column=3, padx=4)
+            self, self.colores, self.metodo.get())).pack(side="right", padx=(0, 6))
+        metodos = ttk.Frame(self.cuerpo, padding=(19, 0, 19, 10))
+        metodos.pack(fill="x")
+        self.metodo = tk.StringVar(value=METODOS[modulo][0])
         self.comparar = tk.BooleanVar()
-        ttk.Checkbutton(top, text="Comparación", variable=self.comparar,
-                        command=self._actualizar_campos).grid(row=0, column=4, padx=4)
+        self.seleccion_metodo = (self.metodo.get(), self.comparar.get())
+        ttk.Checkbutton(metodos, text="Comparación", variable=self.comparar,
+                        command=self._actualizar_campos).pack(side="right", padx=(10, 0))
+        for nombre in METODOS[modulo]:
+            ttk.Radiobutton(metodos, text=nombre, value=nombre, variable=self.metodo,
+                            style="Metodo.TRadiobutton",
+                            command=self._actualizar_campos).pack(side="left", padx=(0, 5))
         partes = ttk.Panedwindow(self.cuerpo, orient="horizontal")
-        partes.pack(fill="both", expand=True, padx=12, pady=(0, 4))
-        controles = ttk.Frame(partes, width=300, padding=(4, 2, 4, 4))
+        partes.pack(fill="both", expand=True, padx=19, pady=(0, 11))
+        controles = ttk.Frame(partes, width=269, style="Tarjeta.TFrame", padding=(12, 10))
         partes.add(controles, weight=0)
-        vertical = ttk.Panedwindow(partes, orient="vertical")
-        partes.add(vertical, weight=1)
-        self.graficas = Graficas(vertical, self.exportar_png)
-        vertical.add(self.graficas, weight=3)
-        salida = ttk.Frame(vertical, height=230)
-        vertical.add(salida, weight=2)
+        salida = ttk.Frame(partes, style="Tarjeta.TFrame")
+        partes.add(salida, weight=1)
         self._formulario(controles)
         self._salida(salida)
-        vertical.bind("<Map>", lambda _: vertical.after_idle(
-            lambda: self._ajustar_sash(vertical)), add="+")
         self._actualizar_campos()
         self.estado.set("Selecciona un método, ingresa los datos y pulsa Calcular.")
 
-    @staticmethod
-    def _ajustar_sash(vertical: ttk.Panedwindow) -> None:
-        if vertical.winfo_exists():
-            vertical.sashpos(0, int(vertical.winfo_height() * .61))
-
     def _formulario(self, master: ttk.Frame) -> None:
-        cabecera = ttk.Frame(master)
-        cabecera.pack(fill="x", pady=(0, 6))
-        ttk.Label(cabecera, text="Datos y parámetros", style="Seccion.TLabel").pack(anchor="w")
-        self.ejemplo = tk.StringVar(value="Seleccionar ejemplo oficial")
+        ttk.Label(master, text="Datos y parámetros", style="FormularioTitulo.TLabel",
+                  padding=(10, 8)).pack(fill="x", pady=(0, 10))
+        cabecera = ttk.Frame(master, style="Tarjeta.TFrame", padding=(8, 6))
+        cabecera.pack(fill="x", pady=(0, 9))
+        ttk.Label(cabecera, text="Ejemplos oficiales", style="Campo.TLabel").pack(anchor="w")
+        self.ejemplo = tk.StringVar(value=EJEMPLO_VACIO)
         opciones = ttk.Combobox(cabecera, textvariable=self.ejemplo,
-                               values=list(EJEMPLOS[self.modulo]), width=31, state="readonly")
-        opciones.pack(fill="x", pady=(4, 0))
+                               values=list(EJEMPLOS[self.modulo]), width=18, state="readonly")
+        opciones.pack(fill="x", pady=(3, 0))
         opciones.bind("<<ComboboxSelected>>", self.cargar_ejemplo)
-        botones = ttk.Frame(master)
-        botones.pack(side="bottom", fill="x", pady=(5, 0))
+        botones = ttk.Frame(master, style="Panel.TFrame")
+        botones.pack(side="bottom", fill="x", pady=(10, 0))
+        ttk.Separator(botones).pack(fill="x", pady=(0, 8))
         self.boton_calcular = ttk.Button(botones, text="Calcular", style="Accion.TButton",
                                          command=self.ejecutar)
-        self.boton_calcular.pack(side="left", padx=(0, 4))
+        self.boton_calcular.pack(side="left", padx=(0, 7), fill="x", expand=True)
         ttk.Button(botones, text="Limpiar", command=self.limpiar).pack(side="left")
-        self.lienzo = tk.Canvas(master, width=265, highlightthickness=0,
-                                background=self.colores["fondo"])
+        self.lienzo = tk.Canvas(master, width=225, highlightthickness=0,
+                                background=self.colores["papel"])
         scroll = ttk.Scrollbar(master, command=self.lienzo.yview)
         self.lienzo.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
         self.lienzo.pack(side="left", fill="both", expand=True)
-        self.formulario = ttk.Frame(self.lienzo, padding=(0, 0, 6, 0))
+        self.formulario = ttk.Frame(self.lienzo, padding=(0, 0, 8, 0), style="Panel.TFrame")
         interior = self.lienzo.create_window((0, 0), window=self.formulario, anchor="nw")
         self.formulario.bind("<Configure>", lambda _: self.lienzo.configure(
             scrollregion=self.lienzo.bbox("all")))
@@ -211,21 +247,42 @@ class Aplicacion(tk.Tk):
         self.cajas: dict[str, ttk.Frame] = {}
         self.predeterminados = {}
         self.primer_campo = None
+        entradas, ajustes, opcionales = FILAS_FORMULARIO[self.modulo]
+        self.grupos_formulario = []
+        for titulo, filas in (("Entradas", entradas),
+                              ("Cálculo", ajustes), (None, (*opcionales, ("decimales",)))):
+            grupo = ttk.Frame(self.formulario, style="Panel.TFrame")
+            if titulo:
+                ttk.Label(grupo, text=titulo, style="Grupo.TLabel").grid(row=0, column=0, sticky="w")
+                ttk.Separator(grupo).grid(row=1, column=0, columnspan=2, sticky="ew", pady=(4, 7))
+            self.grupos_formulario.append((grupo, filas))
+            for columna in range(2):
+                grupo.columnconfigure(columna, weight=1, uniform="campo")
+        self.grupo_opciones = self.grupos_formulario[-1][0]
+        self.opciones_abiertas = False
+        self.boton_opciones = ttk.Button(self.formulario, text="▸  Opciones adicionales",
+                                        command=self._alternar_opciones, style="Tarjeta.TButton")
+        padres = {clave: grupo for grupo, filas in self.grupos_formulario
+                  for fila in filas for clave in fila}
         for clave, etiqueta, defecto in (*PANELES[self.modulo].CAMPOS,
                                          ("decimales", "Decimales (0 a 15)", "8")):
             inicial = defecto[0] if isinstance(defecto, tuple) else defecto
             self.predeterminados[clave] = inicial
             variable = tk.StringVar(value=inicial)
             self.variables[clave] = variable
-            marco = ttk.Frame(self.formulario)
+            marco = ttk.Frame(padres[clave], style="Panel.TFrame")
             self.cajas[clave] = marco
-            ttk.Label(marco, text=etiqueta).pack(anchor="w")
+            etiqueta_campo = ttk.Label(marco, text=ETIQUETAS_FORMULARIO.get(clave, etiqueta),
+                                       style="Campo.TLabel")
+            etiqueta_campo.pack(anchor="w")
+            etiqueta_campo.bind("<MouseWheel>", desplazar)
             if isinstance(defecto, tuple):
                 campo = ttk.Combobox(marco, textvariable=variable, values=defecto,
-                                      width=20, state="readonly")
+                                      width=10, state="readonly")
                 campo.bind("<<ComboboxSelected>>", self._actualizar_campos)
             else:
-                campo = ttk.Entry(marco, textvariable=variable, width=20)
+                estilo = "Expresion.TEntry" if clave == "f" else "TEntry"
+                campo = ttk.Entry(marco, textvariable=variable, width=10, style=estilo)
                 campo.bind("<Return>", lambda _: self.ejecutar())
                 if self.primer_campo is None:
                     self.primer_campo = campo
@@ -235,46 +292,61 @@ class Aplicacion(tk.Tk):
             marco.bind("<MouseWheel>", desplazar)
         self.tabla_entrada = None
         if self.modulo in DATOS:
-            self.datos_marco = ttk.Frame(self.formulario)
-            ttk.Label(self.datos_marco, text="Nodos (doble clic para editar)").pack(anchor="w")
+            self.datos_marco = ttk.Frame(self.formulario, style="Panel.TFrame")
+            ttk.Label(self.datos_marco, text="Nodos", style="Grupo.TLabel").pack(anchor="w")
+            ttk.Label(self.datos_marco, text="Doble clic para editar una celda.",
+                      style="Campo.TLabel").pack(anchor="w")
             self.tabla_entrada = TablaEditable(self.datos_marco)
             self.tabla_entrada.oscuro = self.oscuro
             self.tabla_entrada.pack(fill="x", pady=(3, 4))
             self.tabla_entrada.puntos(DATOS[self.modulo])
-            acciones = ttk.Frame(self.datos_marco)
+            acciones = ttk.Frame(self.datos_marco, style="Panel.TFrame")
             acciones.pack(fill="x")
             for texto, accion in (("Añadir", self.tabla_entrada.agregar),
                                   ("Eliminar", self.tabla_entrada.eliminar),
                                   ("Importar CSV", self.importar)):
-                ttk.Button(acciones, text=texto, command=accion).pack(side="left")
+                ttk.Button(acciones, text=texto, command=accion,
+                           style="Compacto.TButton").pack(side="left", padx=(0, 3))
 
     def _salida(self, master: ttk.Frame) -> None:
         self.titulo_resultado = tk.StringVar(value="Resultados")
-        self.mensaje = tk.StringVar(value="La tabla se llenará al calcular.")
-        ttk.Label(master, textvariable=self.titulo_resultado,
-                  style="Resultado.TLabel", padding=(10, 5)).pack(fill="x", padx=5, pady=(2, 3))
-        ttk.Label(master, textvariable=self.mensaje, style="Nota.TLabel",
-                  wraplength=660).pack(anchor="w", padx=5, pady=(0, 2))
-        fila = ttk.Frame(master)
-        fila.pack(side="bottom", fill="x", pady=(4, 0))
+        self.mensaje = tk.StringVar(value="Los resultados aparecen aquí después del cálculo.")
+        cabecera = ttk.Frame(master, style="Acento.TFrame", padding=(14, 10, 14, 9))
+        cabecera.pack(fill="x")
+        ttk.Label(cabecera, textvariable=self.titulo_resultado, style="Resultado.TLabel").pack(
+            anchor="w")
+        mensaje = ttk.Label(cabecera, textvariable=self.mensaje, style="ResultadoNota.TLabel")
+        mensaje.pack(anchor="w", pady=(1, 0))
+        cabecera.bind("<Configure>", lambda e: mensaje.configure(wraplength=max(200, e.width - 28)))
+        ttk.Separator(master).pack(fill="x")
+        fila = ttk.Frame(master, style="Panel.TFrame", padding=(8, 5))
+        fila.pack(side="bottom", fill="x")
         self.exportadores = []
         for nombre, accion in (("CSV", self.exportar_csv), ("PNG", self.exportar_png),
                                ("PDF", self.exportar_pdf)):
-            boton = ttk.Button(fila, text=nombre, command=accion, state="disabled", width=5)
+            boton = ttk.Button(fila, text=nombre, command=accion, state="disabled", width=4,
+                               style="Compacto.TButton")
             boton.pack(side="left", padx=(0, 3))
             self.exportadores.append(boton)
+        ttk.Separator(fila, orient="vertical").pack(side="left", fill="y", padx=(6, 8))
         self.animadores = []
         for nombre, accion in (("Anterior", lambda: self.avanzar(-1)),
                                ("Siguiente", lambda: self.avanzar(1)),
                                ("Reproducir", self.reproducir), ("Pausar", self.pausar)):
-            boton = ttk.Button(fila, text=nombre, command=accion, state="disabled")
+            boton = ttk.Button(fila, text=nombre, command=accion, state="disabled",
+                               style="Compacto.TButton")
             boton.pack(side="left", padx=(0, 2))
             self.animadores.append(boton)
         self.velocidad = tk.DoubleVar(value=3)
-        ttk.Label(fila, text="Velocidad").pack(side="left", padx=(5, 2))
+        ttk.Label(fila, text="Velocidad", style="Campo.TLabel").pack(side="left", padx=(7, 2))
         ttk.Scale(fila, from_=1, to=8, variable=self.velocidad, length=63).pack(side="left")
-        self.resultados = ttk.Notebook(master)
-        self.resultados.pack(fill="both", expand=True)
+        self.vistas_trabajo = ttk.Notebook(master, style="Espacio.TNotebook")
+        self.vistas_trabajo.pack(fill="both", expand=True, padx=7, pady=(5, 0))
+        self.vistas_trabajo.enable_traversal()
+        self.graficas = Graficas(self.vistas_trabajo, self.exportar_png)
+        self.resultados = ttk.Notebook(self.vistas_trabajo)
+        self.vistas_trabajo.add(self.graficas, text="Gráficas")
+        self.vistas_trabajo.add(self.resultados, text="Tablas y detalles")
         self.tablas: dict[str, Tabla] = {}
         self._tabla("Resumen", [])
 
@@ -286,21 +358,53 @@ class Aplicacion(tk.Tk):
         self.tablas[titulo] = tabla
 
     def _actualizar_campos(self, evento: tk.Event | None = None) -> None:
+        seleccion = (self.metodo.get(), self.comparar.get())
+        if seleccion != self.seleccion_metodo:
+            self.seleccion_metodo = seleccion
+            if self.registro is not None or self.boton_calcular.instate(["disabled"]):
+                self._vaciar_salida()
+            self.estado.set("Ingresa los datos y pulsa Calcular.")
         if evento is not None or self.registro is not None:
             self.pausar()
         campos = {k: v.get() for k, v in self.variables.items()}
         claves = PANELES[self.modulo].visibles(self.metodo.get(), campos, self.comparar.get())
+        claves.add("decimales")
         for clave, marco in self.cajas.items():
-            marco.pack_forget()
+            marco.grid_forget()
+        for grupo, _ in self.grupos_formulario:
+            grupo.pack_forget()
+        self.boton_opciones.pack_forget()
         if self.tabla_entrada is not None:
             self.datos_marco.pack_forget()
-        for clave, marco in self.cajas.items():
-            if clave in claves or clave == "decimales":
-                marco.pack(fill="x", pady=(0, 3))
-        if self.tabla_entrada is not None and (
-                self.modulo == "Interpolación" or campos.get("modo") == "Tabla"):
-            self.datos_marco.pack(fill="x", pady=(3, 0))
+        for indice, (grupo, filas) in enumerate(self.grupos_formulario):
+            if grupo is self.grupo_opciones:
+                self.boton_opciones.pack(fill="x", pady=(0, 4))
+                if self.opciones_abiertas:
+                    grupo.pack(fill="x")
+            elif any(clave in claves for fila in filas for clave in fila):
+                grupo.pack(fill="x", pady=(0, 9))
+            for fila, campos_fila in enumerate(filas, start=2):
+                visibles = [clave for clave in campos_fila if clave in claves]
+                for columna, clave in enumerate(visibles):
+                    self.cajas[clave].grid(row=fila, column=columna, sticky="ew",
+                                          columnspan=3 - len(visibles),
+                                          padx=(0, 4) if len(visibles) == 2 and columna == 0 else 0,
+                                          pady=(0, 5))
+            if indice == 0 and self.tabla_entrada is not None and (
+                    self.modulo == "Interpolación" or campos.get("modo") == "Tabla"):
+                self.datos_marco.pack(fill="x", pady=(0, 11))
         self.lienzo.yview_moveto(0)
+
+    def _alternar_opciones(self) -> None:
+        self.opciones_abiertas = not self.opciones_abiertas
+        if self.opciones_abiertas:
+            self.boton_opciones.configure(text="▾  Opciones adicionales")
+            self.grupo_opciones.pack(fill="x")
+            self.lienzo.update_idletasks()
+            self.lienzo.yview_moveto(1)
+        else:
+            self.boton_opciones.configure(text="▸  Opciones adicionales")
+            self.grupo_opciones.pack_forget()
 
     def cargar_ejemplo(self, evento: tk.Event | None = None) -> None:
         """Restaura parámetros y carga todas las entradas del ejemplo."""
@@ -347,7 +451,7 @@ class Aplicacion(tk.Tk):
         self.tablas.clear()
         self._tabla("Resumen", [])
         self.titulo_resultado.set("Resultados")
-        self.mensaje.set("La tabla se llenará al calcular.")
+        self.mensaje.set("Los resultados aparecen aquí después del cálculo.")
         for boton in self.exportadores + self.animadores:
             boton.configure(state="disabled")
 
@@ -362,7 +466,7 @@ class Aplicacion(tk.Tk):
                 variable.set(self.predeterminados[clave])
         if self.tabla_entrada is not None:
             self.tabla_entrada.puntos([])
-        self.ejemplo.set("Seleccionar ejemplo oficial")
+        self.ejemplo.set(EJEMPLO_VACIO)
         self._actualizar_campos()
         self.estado.set("Entradas y resultados limpiados.")
 
@@ -433,6 +537,8 @@ class Aplicacion(tk.Tk):
         self._tabla("Detalles", detalles)
         self.tablas["Detalles"].arbol.column("2", width=620, anchor="w")
         self.graficas.cargar(calculo, self.oscuro)
+        if self.graficas.calculo is None:
+            self.vistas_trabajo.select(self.resultados)
         primero = next(iter(calculo.resultados.values()))
         self.mensaje.set(calculo.detalles if calculo.comparacion and calculo.detalles
                          else primero.mensaje if not calculo.comparacion
@@ -542,13 +648,13 @@ class Aplicacion(tk.Tk):
     def alternar_tema(self) -> None:
         """Cambia la paleta sin perder el cálculo ni el formulario."""
         self.oscuro = not self.oscuro
-        self.colores = estilos.aplicar(self.estilo, self.oscuro)
+        self.colores = estilos.aplicar(self.estilo, self.oscuro, self.modulo)
         self.configure(background=self.colores["fondo"])
         self.tema.configure(text="Tema claro" if self.oscuro else "Tema oscuro")
         if self.modulo is None:
             self.inicio()
             return
-        self.lienzo.configure(background=self.colores["fondo"])
+        self.lienzo.configure(background=self.colores["papel"])
         if self.tabla_entrada is not None:
             datos = self.tabla_entrada.datos()
             self.tabla_entrada.oscuro = self.oscuro

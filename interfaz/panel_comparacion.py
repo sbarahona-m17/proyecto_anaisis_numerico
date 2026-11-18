@@ -12,6 +12,8 @@ def encabezado(calculo: Calculo, decimales: int) -> str:
     metodo, r = next(iter(calculo.resultados.items()))
     if calculo.modulo == "Diferenciación" and r.convergio:
         a, b = (mostrar(f["Resultado"], decimales) for f in r.extra["resumen"])
+        if metodo == "Segunda derivada":
+            return f"Segunda derivada  {b}     ·     Primera derivada  {a}"
         return f"Primera derivada  {a}     ·     Segunda derivada  {b}"
     nombre = metodo if r.convergio else f"{metodo} · última aproximación"
     return f"{nombre}   {mostrar(r.valor, decimales)}"

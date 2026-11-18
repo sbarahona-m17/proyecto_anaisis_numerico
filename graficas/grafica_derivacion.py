@@ -6,8 +6,8 @@ from utilidades.comparaciones import Calculo
 
 
 def dibujos(calculo: Calculo, paso: int | None = None) -> dict[str, Dibujo]:
-    r = next(iter(calculo.resultados.values()))
-    if not r.convergio:
+    r = next((resultado for resultado in calculo.resultados.values() if resultado.convergio), None)
+    if r is None:
         return {}
 
     def nodos(ax: Axes) -> None:
@@ -19,7 +19,8 @@ def dibujos(calculo: Calculo, paso: int | None = None) -> dict[str, Dibujo]:
             curva(ax, r.extra["función"], xs[0], xs[-1], "f(x)")
         ax.scatter(xs[:visibles], ys[:visibles], marker="o", label="Nodos usados")
         ax.scatter(centro, ys[2], marker="D", label="Punto central")
-        ax.plot(xs, [ys[2] + r.valor * (x - centro) for x in xs],
+        pendiente = r.extra["resumen"][0]["Resultado"]
+        ax.plot(xs, [ys[2] + pendiente * (x - centro) for x in xs],
                 linestyle="--", label="Tangente aproximada")
 
     def error(ax: Axes) -> None:

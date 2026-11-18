@@ -20,17 +20,17 @@ def dibujar(figura: Figure, dibujo: Dibujo, oscuro: bool = False) -> None:
     """Actualiza la figura respetando el tema seleccionado."""
     figura.clear()
     fondo, papel, tinta, detalle = (
-        ("#101827", "#172439", "#edf4ff", "#405471") if oscuro
-        else ("#f6f8fc", "#ffffff", "#172640", "#a5b6cc")
+        ("#1b2639", "#1b2639", "#edf3fc", "#536789") if oscuro
+        else ("#ffffff", "#ffffff", "#17273c", "#a7b7cf")
     )
     figura.set_facecolor(fondo)
     ax = figura.add_subplot()
     ax.set_facecolor(papel)
-    colores = (["#66ddc2", "#80aaff", "#fab276", "#c5a7ff", "#f38ea9"] if oscuro
-               else ["#087f72", "#356abd", "#a65a18", "#7952b6", "#ac4365"])
+    colores = (["#9bb8ff", "#66ddc2", "#fab276", "#c5a7ff", "#f38ea9"] if oscuro
+               else ["#315aca", "#087f72", "#a65a18", "#7952b6", "#ac4365"])
     ax.set_prop_cycle(color=colores)
     dibujo(ax)
-    ax.set_title(ax.get_title(), color=tinta, fontweight="bold", pad=10)
+    ax.set_title(ax.get_title(), color=tinta, fontweight="semibold", fontsize=12, pad=9)
     ax.set_axisbelow(True)
     ax.grid(color=detalle, alpha=.22, which="both")
     ax.xaxis.label.set_color(tinta)

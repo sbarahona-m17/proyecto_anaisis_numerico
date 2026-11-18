@@ -29,7 +29,7 @@ class Calculo:
 def calcular(modulo: str, metodo: str, campos: dict, datos: list,
              comparar: bool = False) -> Calculo:
     """Prepara el problema, ejecuta los métodos y resume el resultado."""
-    if metodo not in METODOS[modulo]:
+    if metodo not in METODOS.get(modulo, ()):
         raise ValueError("Seleccione un método.")
     c = campos
     tabular = c.get("modo") == "Tabla" or modulo == "Interpolación"
@@ -54,7 +54,8 @@ def calcular(modulo: str, metodo: str, campos: dict, datos: list,
                 r.extra.update({"Referencia": raiz_exacta, **errores(r.valor, raiz_exacta)})
             return r
         if modulo == "Diferenciación":
-            return derivacion.cinco_puntos(f, c["x0"], c["h"], datos if tabular else None)
+            return derivacion.cinco_puntos(f, c["x0"], c["h"], datos if tabular else None,
+                                          orden=DERIVACION.index(nombre) + 1)
         if modulo == "Interpolación":
             funcion = interpolacion.lagrange if nombre == "Lagrange" else interpolacion.newton
             consultas = str(c["consultas"]).replace(",", " ").split()
@@ -79,19 +80,20 @@ def calcular(modulo: str, metodo: str, campos: dict, datos: list,
         conjunto.resultados[nombre] = resultado
     for nombre, r in conjunto.resultados.items():
         filas = r.extra.get("resumen")
+        estado = {"Estado": "Completado" if r.convergio else "Detenido",
+                  "Filas": len(r.tabla), "Mensaje": r.mensaje}
         if filas:
-            conjunto.resumen.extend({"Método": nombre, **fila} for fila in filas)
+            if modulo == "Diferenciación" and comparar:
+                filas = [filas[DERIVACION.index(nombre)]]
+            conjunto.resumen.extend({"Método": nombre, **fila, **estado} for fila in filas)
         else:
-            ultimo = r.tabla[-1] if r.tabla else {}
             conjunto.resumen.append({
-                "Método": nombre, "Resultado": r.valor,
-                "Estado": "Completado" if r.convergio else "Detenido",
-                "Mensaje": r.mensaje, "Filas": len(r.tabla),
+                "Método": nombre, "Resultado": r.valor, "Estado": estado["Estado"],
                 **{k: v for k, v in r.extra.items() if k in (
                     "Iteraciones", "Pasos", "Subintervalos", "Residuo", "Referencia",
+                    "Cambio absoluto", "Cambio relativo (%)",
                     "Error absoluto", "Error relativo (%)", "Volumen (GB)")},
-                **{k: ultimo[k] for k in ("Ea", "Error relativo (%)")
-                   if modulo == "Raíces" and k in ultimo},
+                "Filas": estado["Filas"], "Mensaje": r.mensaje,
             })
 
     if modulo == "Interpolación" and comparar and all(r.convergio for r in conjunto.resultados.values()):
@@ -105,14 +107,14 @@ def calcular(modulo: str, metodo: str, campos: dict, datos: list,
             equivalente &= isclose(a["Resultado"], b["Resultado"], rel_tol=1e-9, abs_tol=1e-9)
         conjunto.detalles = ("Equivalencia simbólica y numérica verificada." if equivalente
                              else "Los métodos discrepan. Revise el condicionamiento y la implementación.")
+    if modulo == "Integración" and comparar:
+        base = conjunto.resultados[integracion.METODOS[0]].valor
+        for fila in conjunto.resumen:
+            if base is not None and fila["Resultado"] is not None:
+                fila["Diferencia vs. trapecio simple"] = fila["Resultado"] - base
     if modulo == "Integración" and f is not None:
         referencia = next((r.extra["Referencia"] for r in conjunto.resultados.values()
                            if r.extra.get("Referencia") is not None), None)
-        if comparar:
-            base = conjunto.resumen[0]["Resultado"]
-            for fila in conjunto.resumen:
-                if base is not None and fila["Resultado"] is not None:
-                    fila["Diferencia vs. trapecio simple"] = fila["Resultado"] - base
         if referencia is not None:
             for regla in (integracion.METODOS[1], integracion.METODOS[3]):
                 curva = []

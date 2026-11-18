@@ -1,6 +1,7 @@
 """Pruebas de integración con widgets y figuras Tk reales."""
 import time
 import tkinter as tk
+from tkinter import ttk
 
 import pytest
 
@@ -82,6 +83,98 @@ def test_calculo_comparacion_y_pestanas(app, modulo):
     assert app.modulo is None
 
 
+@pytest.mark.parametrize("modulo,metodo,esperado,tolerancia", [
+    ("Raíces", "Bisección", 2.0945514815, 1e-6),
+    ("Raíces", "Falsa posición", 2.0945514815, 1e-6),
+    ("Raíces", "Newton-Raphson", 2.0945514815, 1e-6),
+    ("Raíces", "Secante", 2.0945514815, 1e-6),
+    ("Diferenciación", "Primera derivada", -.7206978935, 5e-10),
+    ("Diferenciación", "Segunda derivada", -2.8097181764, 5e-10),
+    ("Interpolación", "Lagrange", 439.047619, 5e-7),
+    ("Interpolación", "Newton", 439.047619, 5e-7),
+    ("Integración", "Trapecio simple", .750000000, 5e-10),
+    ("Integración", "Trapecio compuesto", .782794118, 5e-10),
+    ("Integración", "Simpson 1/3 simple", .783333333, 5e-10),
+    ("Integración", "Simpson 1/3 compuesto", .785392157, 5e-10),
+    ("EDO", "Euler", 679.0270, 5e-5),
+    ("EDO", "Heun", 733.4076, 5e-5),
+    ("EDO", "Runge-Kutta 4", 741.8001, 5e-5),
+], ids=[metodo for nombres in METODOS.values() for metodo in nombres])
+def test_calcular_cada_metodo_desde_su_pantalla(app, modulo, metodo, esperado, tolerancia):
+    app.abrir_modulo(modulo)
+    app.ejemplo.set(next(iter(EJEMPLOS[modulo])))
+    app.cargar_ejemplo()
+    app.metodo.set(metodo)
+    app._actualizar_campos()
+    app.boton_calcular.invoke()
+    _esperar(app)
+
+    assert not app.dialogos_prueba
+    assert list(app.registro.calculo.resultados) == [metodo]
+    r = app.registro.calculo.resultados[metodo]
+    assert r.convergio and r.valor == pytest.approx(esperado, abs=tolerancia)
+    assert app.tablas[metodo].filas == r.tabla
+    assert metodo in app.titulo_resultado.get()
+    assert app.graficas.figura().axes[0].get_title()
+    assert all(boton.instate(["!disabled"]) for boton in app.exportadores)
+
+
+def test_diferenciacion_importa_csv_y_traza_la_tangente_de_primera_derivada(app, tmp_path, monkeypatch):
+    csv = tmp_path / "muestras.csv"
+    csv.write_text("x,y\n0,0\n1,1\n2,4\n3,9\n4,16", encoding="utf-8")
+    monkeypatch.setattr("interfaz.ventana_principal.filedialog.askopenfilename", lambda **_: str(csv))
+    app.abrir_modulo("Diferenciación")
+    app.variables["modo"].set("Tabla")
+    app.metodo.set("Segunda derivada")
+    app._actualizar_campos()
+    app.importar()
+    app.boton_calcular.invoke()
+    _esperar(app)
+
+    assert not app.dialogos_prueba
+    assert [fila["Resultado"] for fila in app.registro.calculo.resumen] == [4, 2]
+    figura = app.graficas.figura()
+    tangente, = figura.axes[0].lines
+    assert tangente.get_ydata().tolist() == [-4, 0, 4, 8, 12]
+    _, _, barra, _ = app.graficas.figuras[app.graficas.libro.select()]
+    barra.pan()
+    assert barra.mode.name == "PAN"
+    barra.zoom()
+    assert barra.mode.name == "ZOOM"
+    barra.zoom()
+    assert barra.mode.name == "NONE"
+
+
+def test_cambiar_metodo_y_vista_mantiene_entradas_y_muestra_su_resultado(app):
+    app.abrir_modulo("Raíces")
+    botones = [control for marco in app.cuerpo.winfo_children()
+               for control in marco.winfo_children() if isinstance(control, ttk.Radiobutton)]
+    assert [boton["text"] for boton in botones] == list(METODOS["Raíces"])
+    assert botones[0].instate(["selected"])
+    app.variables["f"].set("x^2-4")
+    app.variables["x0"].set("3")
+    botones[2].invoke()
+    assert botones[2].instate(["selected"])
+    app.boton_calcular.invoke()
+    _esperar(app)
+    assert app.registro.calculo.resultados["Newton-Raphson"].valor == pytest.approx(2)
+
+    titulo = app.titulo_resultado.get()
+    app.vistas_trabajo.select(app.resultados)
+    app.update()
+    assert app.resultados.winfo_ismapped() and not app.graficas.winfo_ismapped()
+    assert app.titulo_resultado.get() == titulo
+    app.vistas_trabajo.select(app.graficas)
+    app.update()
+    assert app.graficas.winfo_ismapped() and not app.resultados.winfo_ismapped()
+    assert app.graficas.figura().axes[0].has_data()
+
+    botones[0].invoke()
+    assert app.variables["f"].get() == "x^2-4"
+    assert app.registro is None
+    assert all(boton.instate(["disabled"]) for boton in app.exportadores)
+
+
 def test_importar_editar_exportar_y_recuperar(app, tmp_path, monkeypatch):
     entrada = tmp_path / "entrada.csv"
     entrada.write_text("x,y\n0,2\n1,3\n2,6", encoding="utf-8")
@@ -115,6 +208,25 @@ def test_importar_editar_exportar_y_recuperar(app, tmp_path, monkeypatch):
     tabla.arbol.selection_set("0")
     boton.invoke()
     assert app.registro.calculo.resumen[0]["Resultado"] == 5
+
+
+def test_opciones_adicionales_se_pliegan_y_conservan_sus_valores(app):
+    app.abrir_modulo("Raíces")
+    app.update()
+    assert app.cajas["tol"].winfo_ismapped()
+    assert not app.cajas["decimales"].winfo_ismapped()
+    app.boton_opciones.invoke()
+    app.update()
+    assert app.cajas["decimales"].winfo_ismapped()
+    assert app.cajas["referencia"].winfo_ismapped()
+    app.variables["decimales"].set("5")
+    app.boton_opciones.invoke()
+    app.update()
+    assert not app.cajas["decimales"].winfo_ismapped()
+    app.boton_calcular.invoke()
+    _esperar(app)
+    assert not app.dialogos_prueba
+    assert app.registro.decimales == 5
 
 
 def test_ayuda_general_y_metodos(app):

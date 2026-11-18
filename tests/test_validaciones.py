@@ -3,7 +3,7 @@ import pytest
 from nucleo.resultado import Resultado
 from utilidades.errores import errores
 from utilidades.exportacion import guardar_csv, leer_csv
-from utilidades.validaciones import real
+from utilidades.validaciones import nodos, real
 
 
 @pytest.mark.parametrize("valor", ["nan", "inf", "-inf", "número", None])
@@ -24,8 +24,13 @@ def test_csv(tmp_path):
     ruta = tmp_path / "datos.csv"
     guardar_csv(ruta, [{"x": 0, "y": 1}, {"x": 1, "y": 2}])
     assert leer_csv(ruta) == [(0, 1), (1, 2)]
-    ruta.write_text("x;y\n0;1\n2;3", encoding="utf-8")
+    ruta.write_text("\n  \nx;y\n0;1\n2;3", encoding="utf-8")
     assert leer_csv(ruta) == [(0, 1), (2, 3)]
+
+
+def test_tabla_debe_ser_iterable():
+    with pytest.raises(ValueError, match="tabla con dos columnas"):
+        nodos(None)
 
 
 @pytest.mark.parametrize("contenido", ["", "x,y", "x,y\n0,1,2", 'x,y\n"0,1', "x,y\n0,nan\n1,3"])

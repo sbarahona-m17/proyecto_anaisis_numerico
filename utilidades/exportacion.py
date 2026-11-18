@@ -18,7 +18,8 @@ def leer_csv(ruta: str | Path) -> list[tuple[float, float]]:
             if not muestra.strip():
                 raise ValueError("El archivo CSV está vacío.")
             archivo.seek(0)
-            delimitador = ";" if ";" in muestra.splitlines()[0] else ","
+            primera_fila = next(fila for fila in muestra.splitlines() if fila.strip())
+            delimitador = ";" if ";" in primera_fila else ","
             filas = []
             for fila in csv.reader(archivo, delimiter=delimitador, strict=True):
                 if any(celda.strip() for celda in fila):

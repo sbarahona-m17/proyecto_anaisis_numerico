@@ -44,6 +44,44 @@ def test_fronteras():
     assert raices.biseccion(lambda x: x*x-2, 0, 2, criterio="Residuo").convergio
 
 
+@pytest.mark.parametrize("escala", [1, 1e-100])
+def test_falsa_posicion_no_confunde_paso_pequeno_con_raiz(escala):
+    r = raices.falsa_posicion(lambda x: escala * (x**10 - 1), 0, 100, max_iter=10)
+    assert not r.convergio
+    assert r.extra["Iteraciones"] == 10
+    assert r.extra["Cambio absoluto"] < 1e-6
+    assert r.extra["Residuo"] == pytest.approx(escala, abs=0)
+
+
+def test_secante_no_acepta_un_paso_pequeno_si_no_hay_cambio_en_f():
+    r = raices.secante(lambda x: x**10 - 1, 100, 0)
+    assert not r.convergio
+    assert r.extra["Cambio absoluto"] < 1e-6
+    assert "Denominador nulo" in r.mensaje
+
+
+def test_newton_y_secante_con_f_escalada():
+    n = raices.newton(interpretar("1e-20*(x-2)"), 1)
+    assert n.convergio and n.valor == 2
+    assert n.extra["Derivada simbólica"]
+    assert n.tabla[0]["Ea"] == 1
+    assert n.tabla[0]["Error relativo (%)"] == 50
+
+    s = raices.secante(lambda x: 1e308 * x, -1, 1)
+    assert s.convergio and s.valor == 0
+    assert s.tabla[0]["Ea"] == 1
+    assert s.tabla[0]["Error relativo (%)"] is None
+
+
+def test_dominio_invalido_y_perdida_de_dominio_en_newton():
+    f = interpretar("log(x)")
+    with pytest.raises(ValueError, match="real y finita"):
+        raices.falsa_posicion(f, -1, 2)
+    r = raices.newton(f, 4)
+    assert not r.convergio and r.valor == 4
+    assert "real y finita" in r.mensaje
+
+
 @pytest.mark.parametrize("opciones", [{"tol": 0}, {"tol": -1}, {"max_iter": 0},
                                      {"max_iter": 2.5}, {"criterio": "otro"}])
 def test_parametros_invalidos(opciones):
